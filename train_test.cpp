@@ -5,11 +5,11 @@
 #include <fstream>
 #include <opencv2/highgui/highgui.hpp>
 
-train_test::train_test()
+train_test::train_test(const std::string &train_root, const std::string &data_root)
 {
-    m_train_root = "../generate_data/";
+    m_train_root = train_root;
     m_test_root = "../test_data/";
-    m_data_root = "../Data/";
+    m_data_root = data_root;
     m_feature_size = 128;
     m_para_num = 6;
     m_casscade_sum = 7;

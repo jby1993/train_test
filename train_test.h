@@ -8,7 +8,7 @@
 class train_test
 {
 public:
-    train_test();
+    train_test(const std::string &train_root, const std::string &data_root);
     void read_groundtruth_data();
     void set_train_root(const std::string &root){m_train_root = root;}
     void set_data_root(const std::string &root){m_data_root = root;}
