@@ -1,4 +1,4 @@
-QT += core opengl
+QT += core
 QT -= gui
 
 CONFIG += c++11
@@ -24,7 +24,7 @@ INCLUDEPATH +=./ \
              /usr/include \
             /home/jby/eigen3 \
             /usr/local/include \
-            /home/john/vlfeat-0.9.20/vl \
+            /home/jby/vlfeat-0.9.20/vl \
 
 
 LIBS += -L/usr/lib \

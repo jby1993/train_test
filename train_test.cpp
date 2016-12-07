@@ -9,6 +9,7 @@ train_test::train_test()
 {
     m_train_root = "../generate_data/";
     m_test_root = "../test_data/";
+    m_data_root = "../Data/";
     m_feature_size = 128;
     m_para_num = 6;
     m_casscade_sum = 7;
@@ -48,7 +49,7 @@ void train_test::read_groundtruth_data()
         std::string root = m_train_root+m_train_individuals[i]+"/";
         QDir path(QString(root.data()));
         path.setFilter(QDir::Files);
-        QStringList filters={"*.jpg"};
+        QStringList filters("*.jpg");
         path.setNameFilters(filters);
         path.setSorting(QDir::Name);
         QStringList entrys = path.entryList();
@@ -324,7 +325,7 @@ void train_test::read_ground_shape_exp()
     for(int i=0;i<m_train_individuals.size();i++)
     {
         name = "/mesh_"+m_train_individuals[i]+".txt";
-        std::ifstream file(m_train_root+m_train_individuals[i]+name);
+        std::ifstream file((m_train_root+m_train_individuals[i]+name).data());
         for(int i=0;i<m_st_pc_num;i++)
         {
             file>>(*shapes);
@@ -353,7 +354,7 @@ void train_test::read_ground_para_box()
             QString num;    num.setNum(id);
             std::string name = root+file_name_base+num.toStdString()+".txt";
             std::string box_name = root+box_name_base+num.toStdString()+".txt";
-            std::ifstream file(name);
+            std::ifstream file(name.data());
             file>>(*data);  data++; //scale;
             float angle;    //angles, save arc
             file>>angle;    angle*=M_PI/180.0;  (*data) = angle;    data++;
@@ -363,7 +364,7 @@ void train_test::read_ground_para_box()
             file>>(*data);  data++;
             file.close();
 
-            file.open(box_name);
+            file.open(box_name.data());
             file>>(*box_data);  box_data++;
             file>>(*box_data);  box_data++;
             file>>(*box_data);  box_data++;
@@ -377,7 +378,7 @@ void train_test::load_3DMM_data()
 {
     int v_num,pc_num;
     FILE* file;
-    file = fopen("../Data/mainShapePCA.bin", "rb");
+    file = fopen((m_data_root+"mainShapePCA.bin").data(), "rb");
     fread(&v_num,sizeof(int), 1, file);
     fread(&pc_num,sizeof(int),1,file);
     m_vertex_num = v_num;
@@ -404,7 +405,7 @@ void train_test::load_3DMM_data()
 //    fclose(file);
 
 
-    file = fopen("../Data/DeltaExpPCA.bin","rb");
+    file = fopen((m_data_root+"DeltaExpPCA.bin").data(),"rb");
     fread(&v_num,sizeof(int), 1, file);
     fread(&pc_num,sizeof(int),1,file);
     m_expression_pc_num = pc_num;
@@ -422,7 +423,7 @@ void train_test::load_3DMM_data()
     m_mean_face = m_mean_shape+m_mean_expression;
 
 
-    file = fopen("../Data/tri.bin","rb");
+    file = fopen((m_data_root+"tri.bin").data(),"rb");
     fread(&m_face_num,sizeof(int),1,file);
     Eigen::MatrixXi triangles(3,m_face_num);
     fread(triangles.data(),sizeof(int),triangles.size(),file);
@@ -450,7 +451,7 @@ void train_test::load_3DMM_data()
 void train_test::load_keypoints_id()
 {
     m_keypoint_id.clear();
-    std::ifstream file("../Data/keypoints_id.txt");
+    std::ifstream file((m_data_root+"keypoints_id.txt").data());
     if(!file.is_open())
     {
         std::cout<<"read key points id failed!"<<std::endl;

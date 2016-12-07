@@ -11,6 +11,7 @@ public:
     train_test();
     void read_groundtruth_data();
     void set_train_root(const std::string &root){m_train_root = root;}
+    void set_data_root(const std::string &root){m_data_root = root;}
     void train_para_only();
     void test_para_only();
     void save_para_result();
@@ -45,6 +46,7 @@ private:
     Eigen::MatrixXf m_groundtruth_exps;
     Eigen::MatrixXf m_groundtruth_box;
     std::string m_train_root;
+    std::string m_data_root;
     std::string m_test_root;
 
     std::vector<cv::Mat>    m_train_imgs;   //save as CV_32F
