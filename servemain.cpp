@@ -14,6 +14,6 @@ int main(int argc, char *argv[])
 //    TrainTest.set_train_root("../test_data/");
 //    TrainTest.read_groundtruth_data();
 //    TrainTest.test_para_only();
-//    std::cout<<"done"<<std::endl;
+    std::cout<<"done"<<std::endl;
     return 0;
 }

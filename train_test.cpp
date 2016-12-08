@@ -138,7 +138,7 @@ void train_test::compute_all_visible_features()
 // ||delta_x - R*vfeature-b||^2+lamda*||R||^2
 void train_test::compute_paras_R_b()
 {
-    float lamda = 0.1;
+    float lamda = 1.0;
     Eigen::MatrixXf delta_x(m_para_num, m_total_images);
     for(int i=0;i<m_total_images;i++)
     {
@@ -158,10 +158,10 @@ void train_test::compute_paras_R_b()
     rhs.block(0,0,R_col-1,m_para_num) = m_visible_features*delta_x.transpose();
     rhs.bottomRows(1) = delta_x.transpose().colwise().sum();
 
-
+    lhs = lhs.transpose().eval();
     std::cout<<"casscade para "<<m_casscade_level<<" compute for A("<<lhs.rows()<<"*"<<lhs.cols()<<")..."<<std::endl;
 
-    Eigen::MatrixXf temp = lhs.selfadjointView<Eigen::Upper>().llt().solve(rhs);
+    Eigen::MatrixXf temp = lhs.ldlt().solve(rhs);
     Eigen::MatrixXf result = temp.transpose();
     std::cout<<"done! "<<std::endl;
     std::cout<<"casscade para "<<m_casscade_level<<" result norm: "<<result.norm()<<"; sqrt energy is "<<(lhs*result.transpose()-rhs).norm()<<std::endl;
