@@ -15,6 +15,7 @@ train_test::train_test(const std::string &train_root, const std::string &data_ro
     m_casscade_sum = 7;
     load_3DMM_data();
     load_keypoints_id();
+
     //use sift feature
     m_feature_detector = new SIFTDectector;
 }
