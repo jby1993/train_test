@@ -43,8 +43,9 @@ void train_test::read_groundtruth_data()
     m_train_shapes.resize(m_st_pc_num,m_train_individuals.size());
     m_train_exps.resize(m_expression_pc_num,m_train_individuals.size());
 
-    m_train_individuals_datanum.clear();
+    m_train_individuals_imagenum.clear();
     m_total_images=0;
+    m_total_datas=0;
     for(int i=0;i<m_train_individuals.size();i++)
     {
         std::string root = m_train_root+m_train_individuals[i]+"/";
@@ -54,28 +55,54 @@ void train_test::read_groundtruth_data()
         path.setNameFilters(filters);
         path.setSorting(QDir::Name);
         QStringList entrys = path.entryList();
-        m_train_individuals_datanum.push_back(entrys.size());
+        m_train_individuals_imagenum.push_back(entrys.size());
         m_total_images+=entrys.size();
     }
-    m_data_to_person_id.resize(m_total_images, -1);
-    int start = 0;
-    for(int i=0;i<m_train_individuals_datanum.size();i++)
+    read_ground_shape_exp();
+    read_train_images();
+    read_ground_para_box();
+    m_data_to_person_id.resize(m_total_datas, -1);
+    int start_img = 0;
+    int start_data = 0;
+    for(int i=0;i<m_train_individuals_imagenum.size();i++)
     {
-        int size = m_train_individuals_datanum[i];
-        for(int j=0;j<size;j++)
-            m_data_to_person_id[start+j] = i;
-        start+=size;
+        int box_num = 0;
+        int img_size = m_train_individuals_imagenum[i];
+        for(int j=0;j<img_size;j++)
+            box_num+=m_train_perimage_boxnum[start_img+j];
+        start_img+=img_size;
+
+        for(int id=start_data; id<start_data+box_num;id++)
+            m_data_to_person_id[id] = i;
+        start_data+=box_num;
     }
 
-    m_groundtruth_paras.resize(m_para_num, m_total_images);
-    m_groundtruth_box.resize(4,m_total_images);
-    m_train_paras.resize(m_para_num,m_total_images);
-    m_visible_features.resize(m_keypoint_id.size()*m_feature_size,m_total_images);
+    m_data_to_img_id.resize(m_total_datas,-1);
+    start_img = 0;
+    start_data = 0;
+    for(int i=0;i<m_train_individuals_imagenum.size();i++)
+    {
+        int img_size = m_train_individuals_imagenum[i];
+        for(int j=0;j<img_size;j++)
+        {
+            int box_num=m_train_perimage_boxnum[start_img+j];
+            for(int id = start_data; id<start_data+box_num; id++)
+            {
+                m_data_to_img_id[id] = start_img+j;
+            }
+            start_data+=box_num;
+        }
+        start_img+=img_size;
+    }
 
-    std::cout<<"train data has "<<m_train_individuals.size()<<" individuals."<<" total "<<m_total_images<<" images."<<std::endl;
-    read_ground_shape_exp();
-    read_ground_para_box();
-    read_train_images();
+
+    m_train_paras.resize(m_para_num,m_total_datas);
+    m_visible_features.resize(m_keypoint_id.size()*m_feature_size,m_total_datas);
+
+    std::cout<<"train data has "<<m_train_individuals.size()<<" individuals."<<" total "<<m_total_images<<" images. "<<"total "<<m_total_datas<<" train datas."<<std::endl;
+
+
+
 }
 
 
@@ -147,7 +174,7 @@ void train_test::compute_all_visible_features()
 {
     //use temp val in compute_visible_features instead of m_v, m_mesh to make omp work correct
     #pragma omp parallel for num_threads(16)
-    for(int col=0; col<m_total_images; col++)
+    for(int col=0; col<m_total_datas; col++)
     {
         compute_visible_features(col);
     }
@@ -156,11 +183,8 @@ void train_test::compute_all_visible_features()
 void train_test::compute_paras_R_b()
 {
     float lamda = 1.0;
-    Eigen::MatrixXf delta_x(m_para_num, m_total_images);
-    for(int i=0;i<m_total_images;i++)
-    {
-            delta_x.col(i) = m_groundtruth_paras.col(i) - m_train_paras.col(i);
-    }
+    Eigen::MatrixXf delta_x;
+    compute_delta_para(delta_x);
     //normalize paras    
     delta_x = (1.0/m_paras_sd.array()).matrix().asDiagonal()*delta_x;
 
@@ -171,7 +195,7 @@ void train_test::compute_paras_R_b()
     Eigen::MatrixXf rhs(R_col,m_para_num);
     lhs.block(0,0,R_col-1,R_col-1).selfadjointView<Eigen::Upper>().rankUpdate(m_visible_features,1.0);
     lhs.block(0,R_col-1,R_col-1,1) = m_visible_features.rowwise().sum();
-    lhs(R_col-1,R_col-1) = float(m_total_images);
+    lhs(R_col-1,R_col-1) = float(m_total_datas);
     //add regular
     lhs.block(0,0,R_col-1,R_col-1)+=(lamda*Eigen::VectorXf(R_col-1).setOnes()).asDiagonal();
 
@@ -196,16 +220,17 @@ void train_test::compute_paras_R_b()
 
 void train_test::update_para()
 {
-    Eigen::MatrixXf delta_x(m_para_num, m_total_images);
+    Eigen::MatrixXf delta_x;
     delta_x = (m_para_Rs[m_casscade_level]*m_visible_features).colwise()+m_para_bs[m_casscade_level];
     //unnormalize paras
     delta_x = m_paras_sd.asDiagonal()*delta_x;
 
     m_train_paras+=delta_x;
-    Eigen::MatrixXf delta_para = m_groundtruth_paras - m_train_paras;
+    Eigen::MatrixXf delta_para;
+    compute_delta_para(delta_para);
     Eigen::MatrixXf delta_s = delta_para.row(0);
-    Eigen::MatrixXf delta_r = delta_para.block(1,0,3,m_total_images);
-    Eigen::MatrixXf delta_t = delta_para.block(4,0,2,m_total_images);
+    Eigen::MatrixXf delta_r = delta_para.block(1,0,3,m_total_datas);
+    Eigen::MatrixXf delta_t = delta_para.block(4,0,2,m_total_datas);
     Eigen::MatrixXf delta_norm = delta_s.colwise().norm();
     std::cout<<"casscade para "<<m_casscade_level<<" scale with ground truth norm: mean: "<<delta_norm.mean()
             <<" max: "<<delta_norm.maxCoeff()<<" min: "<<delta_norm.minCoeff()<<std::endl;
@@ -264,7 +289,7 @@ void train_test::compute_visible_features(int col)
     Eigen::MatrixXf feature_pos(2,m_keypoint_id.size()) ;
     feature_pos = verts.block(0,0,2,m_keypoint_id.size());
 
-    cv::Mat &image = m_train_imgs[col];
+    cv::Mat &image = m_train_imgs[m_data_to_img_id[col]];
 //    cv::Mat grayImage;
 //    if(image.channels()==3)
 //        cv::cvtColor(image, grayImage, cv::COLOR_BGR2GRAY);
@@ -372,7 +397,7 @@ void train_test::read_train_images()
     for(int i=0;i<m_train_individuals.size();i++)
     {
         std::string root = m_train_root+m_train_individuals[i]+"/";
-        for(int id=0;id<m_train_individuals_datanum[i];id++)
+        for(int id=0;id<m_train_individuals_imagenum[i];id++)
         {
             QString num;    num.setNum(id);
             std::string name = root+file_name_base+num.toStdString()+".jpg";
@@ -411,12 +436,16 @@ void train_test::read_ground_para_box()
 {
     std::string file_name_base = "img_";
     std::string box_name_base = "img_box_";
+    m_groundtruth_paras.resize(m_para_num, m_total_images);
     float *data = m_groundtruth_paras.data();
-    float *box_data = m_groundtruth_box.data();
+//    float *box_data = m_groundtruth_box.data();
+    m_train_perimage_boxnum.clear();
+    std::vector<Eigen::MatrixXf> temp_boxs;
+    m_total_datas=0;
     for(int i=0;i<m_train_individuals.size();i++)
     {
         std::string root = m_train_root+m_train_individuals[i]+"/";
-        for(int id=0;id<m_train_individuals_datanum[i];id++)
+        for(int id=0;id<m_train_individuals_imagenum[i];id++)
         {
             QString num;    num.setNum(id);
             std::string name = root+file_name_base+num.toStdString()+".txt";
@@ -431,14 +460,33 @@ void train_test::read_ground_para_box()
             file>>(*data);  data++;
             file.close();
 
+            Eigen::MatrixXf boxs;
+            int box_num;
             file.open(box_name.data());
-            file>>(*box_data);  box_data++;
-            file>>(*box_data);  box_data++;
-            file>>(*box_data);  box_data++;
-            file>>(*box_data);  box_data++;
+            file>>box_num;
+            boxs.resize(4,box_num);
+            float *box_data=boxs.data();
+            for(int bnum=0;bnum<box_num;bnum++)
+            {
+                file>>(*box_data);  box_data++;
+                file>>(*box_data);  box_data++;
+                file>>(*box_data);  box_data++;
+                file>>(*box_data);  box_data++;
+            }
             file.close();
+            temp_boxs.push_back(boxs);
+            m_total_datas+=box_num;
+            m_train_perimage_boxnum.push_back(box_num);
         }
     }
+    m_groundtruth_box.resize(4,m_total_datas);
+    float *bdata = m_groundtruth_box.data();
+    for(int i=0; i<temp_boxs.size(); i++)
+    {
+        memcpy(bdata,temp_boxs[i].data(),sizeof(float)*temp_boxs[i].size());
+        bdata+=temp_boxs[i].size();
+    }
+
     m_paras_sd.resize(m_para_num);
     m_paras_mean.resize(m_para_num);
     m_paras_mean = m_groundtruth_paras.rowwise().mean();
@@ -573,10 +621,11 @@ void train_test::initial_para()
         train_data[4] = tx;
         train_data[5] = ty;
     }
-    Eigen::MatrixXf delta_para = m_groundtruth_paras - m_train_paras;
+    Eigen::MatrixXf delta_para;
+    compute_delta_para(delta_para);
     Eigen::MatrixXf delta_s = delta_para.row(0);
-    Eigen::MatrixXf delta_r = delta_para.block(1,0,3,m_total_images);
-    Eigen::MatrixXf delta_t = delta_para.block(4,0,2,m_total_images);
+    Eigen::MatrixXf delta_r = delta_para.block(1,0,3,m_total_datas);
+    Eigen::MatrixXf delta_t = delta_para.block(4,0,2,m_total_datas);
     Eigen::MatrixXf delta_norm = delta_s.colwise().norm();
     std::cout<<"initial scale with ground truth norm: mean: "<<delta_norm.mean()
             <<" max: "<<delta_norm.maxCoeff()<<" min: "<<delta_norm.minCoeff()<<std::endl;
@@ -618,57 +667,79 @@ void train_test::initial_shape_exp_with_mean()
     m_train_exps.setZero();
 }
 
-void train_test::save_test_result_imgs()
+void train_test::compute_delta_para(Eigen::MatrixXf &delta_para)
 {
-    std::string save_root = "../test_result/";
-    for(int i=0; i<m_train_individuals.size(); i++)
+    int rows = m_train_paras.rows();
+    int cols = m_train_paras.cols();
+    delta_para.resize(rows,cols);
+    int start_img = 0;
+    int start_data = 0;
+    for(int i=0;i<m_train_individuals_imagenum.size();i++)
     {
-        for(int j=0; j<m_train_individuals_datanum[i]; j++)
+        int img_size = m_train_individuals_imagenum[i];
+        for(int j=0;j<img_size;j++)
         {
-            int col = getDataColId(i,j);
-            cv::Mat img = m_train_imgs[col].clone();
-            update_mv(i);
-            float *para = m_train_paras.col(col).data();
-            float scale = para[0];
-            float x,y,z;    x=para[1];  y=para[2];  z=para[3];
-            float tx,ty;    tx = para[4];   ty = para[5];
-            Eigen::Affine3f transformation;
-            transformation  = Eigen::AngleAxisf(x, Eigen::Vector3f::UnitX()) *
-                              Eigen::AngleAxisf(y, Eigen::Vector3f::UnitY()) *
-                              Eigen::AngleAxisf(z, Eigen::Vector3f::UnitZ());
-            Eigen::Matrix3f R = transformation.rotation();
-            m_v.resize(3, m_v.size()/3);
-            Eigen::MatrixXf temp = (scale*R*m_v).colwise()+Eigen::Vector3f(tx,ty,0.0);
-            std::vector<bool>   visuals;
-            compute_keypoint_visible(temp,img.cols,img.rows,visuals);
-            for(int id=0;id<visuals.size();id++)
-            {
-                int vid = m_keypoint_id[id];
-                Eigen::Vector3f vert = temp.col(vid);
-                if(visuals[id])
-                    cv::circle(img,cv::Point(vert(0),vert(1)),1,cv::Scalar(0,255,0),-1);
-                else
-                {
-                    if(i<10)
-                        cv::circle(img,cv::Point(vert(0),vert(1)),1,cv::Scalar(0,0,255),-1);
-                }
-            }
-            QString iid;    iid.setNum(j);
-            QDir save_dir(QString(save_root.data()));
-            save_dir.mkdir(QString(m_train_individuals[i].data()));
-            cv::imwrite(save_root+m_train_individuals[i]+"/"+iid.toStdString()+".jpg",img);
+            int box_num=m_train_perimage_boxnum[start_img+j];
+            delta_para.block(0,start_data,rows,box_num) = -(m_train_paras.block(0,start_data,rows,box_num).colwise()-m_groundtruth_paras.col(start_img+j) );
+            start_data+=box_num;
         }
+        start_img+=img_size;
     }
 }
 
-int train_test::getDataColId(int person, int img)
+void train_test::save_test_result_imgs()
 {
-    int id=0;
-    for(int i=0;i<person;i++)
-        id += m_train_individuals_datanum[i];
-    id+=img;
-    return id;
+    std::string save_root = "../test_result/";
+    int start_img=0;
+    int start_data=0;
+    for(int i=0; i<m_train_individuals.size(); i++)
+    {
+        int imgs = m_train_individuals_imagenum[i];
+        for(int j=0; j<imgs; j++)
+        {
+            int box_num = m_train_perimage_boxnum[start_img+j];
+            cv::Mat img = m_train_imgs[start_img+j].clone();
+            update_mv(i);
+            for(int col=start_data; col<start_data+box_num; col++)
+            {
+                float *para = m_train_paras.col(col).data();
+                float scale = para[0];
+                float x,y,z;    x=para[1];  y=para[2];  z=para[3];
+                float tx,ty;    tx = para[4];   ty = para[5];
+                Eigen::Affine3f transformation;
+                transformation  = Eigen::AngleAxisf(x, Eigen::Vector3f::UnitX()) *
+                        Eigen::AngleAxisf(y, Eigen::Vector3f::UnitY()) *
+                        Eigen::AngleAxisf(z, Eigen::Vector3f::UnitZ());
+                Eigen::Matrix3f R = transformation.rotation();
+                m_v.resize(3, m_v.size()/3);
+                Eigen::MatrixXf temp = (scale*R*m_v).colwise()+Eigen::Vector3f(tx,ty,0.0);
+                std::vector<bool>   visuals;
+                compute_keypoint_visible(temp,img.cols,img.rows,visuals);
+                for(int id=0;id<visuals.size();id++)
+                {
+                    int vid = m_keypoint_id[id];
+                    Eigen::Vector3f vert = temp.col(vid);
+                    if(visuals[id])
+                        cv::circle(img,cv::Point(vert(0),vert(1)),1,cv::Scalar(0,255,0),-1);
+                    else
+                    {
+                        if(i<10)
+                            cv::circle(img,cv::Point(vert(0),vert(1)),1,cv::Scalar(0,0,255),-1);
+                    }
+                }
+                QString iid;    iid.setNum(j);
+                QString bid;    bid.setNum(col-start_data);
+                QDir save_dir(QString(save_root.data()));
+                save_dir.mkdir(QString(m_train_individuals[i].data()));
+                cv::imwrite(save_root+m_train_individuals[i]+"/"+iid.toStdString()+"_"+bid.toStdString()+".jpg",img);
+                start_data+=box_num;
+            }
+        }
+        start_img+=imgs;
+    }
 }
+
+
 
 //save some compute time!   do not use boundary points
 void train_test::update_keypoints_face_normals(TriMesh &mesh, const std::vector<int> &ids)

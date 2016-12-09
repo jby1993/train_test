@@ -37,8 +37,9 @@ private:
     void initial_shape_exp_with_groundtruth();
     void initial_shape_exp_with_mean();
 
+    void compute_delta_para(Eigen::MatrixXf &delta_para);
+
     void save_test_result_imgs();
-    int getDataColId(int person, int img);
     void update_keypoints_face_normals(TriMesh &mesh, const std::vector<int> &ids);
 private:
     Eigen::MatrixXf m_groundtruth_paras; //angle has to be arc
@@ -53,14 +54,17 @@ private:
 
     std::vector<cv::Mat>    m_train_imgs;   //save as CV_32F
     std::vector<std::string> m_train_individuals;
-    std::vector<int>              m_train_individuals_datanum;
+    std::vector<int>              m_train_individuals_imagenum;
+    std::vector<int>            m_train_perimage_boxnum;
     std::vector<int>            m_keypoint_id;
     std::vector<int>            m_data_to_person_id;
+    std::vector<int>            m_data_to_img_id;
     std::vector<Eigen::MatrixXf> m_para_Rs;
     std::vector<Eigen::VectorXf> m_para_bs;
     int m_feature_size;
     int m_casscade_level;
     int m_total_images;
+    int m_total_datas;
     int m_para_num;
     int m_casscade_sum;
 
