@@ -6,6 +6,7 @@ CONFIG += c++11
 TARGET = SythenticImagesWith3DMM
 CONFIG += console
 CONFIG -= app_bundle
+QMAKE_CXXFLAGS += -fopenmp
 
 TEMPLATE = app
 
@@ -38,3 +39,4 @@ LIBS+=-lOpenMeshCore \
         -lopencv_highgui \
         -lopencv_imgproc \
         -lvl \
+		-lgomp -lpthread \

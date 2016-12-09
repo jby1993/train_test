@@ -86,8 +86,10 @@ bool SIFTDectector::DescriptorOnCustomPoints(const cv::Mat &img, const std::vect
             //use only one oritation
             if(nangles==0)
             {
-                delete [] ikeys;
-                return false;
+               // delete [] ikeys;
+               // return false;
+			   angles [0] = 0.0;
+			   nangles = 1;
             }
             vl_sift_pix rbuf [128] ;
             /* compute descriptor */

@@ -142,7 +142,7 @@ void train_test::initial_x_train_para_only()
 void train_test::compute_all_visible_features()
 {
     //use temp val in compute_visible_features instead of m_v, m_mesh to make omp work correct
-    #pragma omp parallel for num_threads(8)
+    #pragma omp parallel for num_threads(16)
     for(int col=0; col<m_total_images; col++)
     {
         compute_visible_features(col);
@@ -166,7 +166,7 @@ void train_test::compute_paras_R_b()
     lhs.block(0,R_col-1,R_col-1,1) = m_visible_features.rowwise().sum();
     lhs(R_col-1,R_col-1) = float(m_total_images);
     //add regular
-    lhs.block(0,0,R_col-1,R_col-1)+=(lamda*Eigen::VectorXf(R_col-1).setOnes()).asDiagonal();
+    //lhs.block(0,0,R_col-1,R_col-1)+=(lamda*Eigen::VectorXf(R_col-1).setOnes()).asDiagonal();
 
     rhs.block(0,0,R_col-1,m_para_num) = m_visible_features*delta_x.transpose();
     rhs.bottomRows(1) = delta_x.transpose().colwise().sum();
