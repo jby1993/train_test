@@ -155,14 +155,14 @@ void train_test::compute_all_visible_features()
 // ||delta_x - R*vfeature-b||^2+lamda*||R||^2
 void train_test::compute_paras_R_b()
 {
-    float lamda = 2.0;
+    float lamda = 1.0;
     Eigen::MatrixXf delta_x(m_para_num, m_total_images);
     for(int i=0;i<m_total_images;i++)
     {
             delta_x.col(i) = m_groundtruth_paras.col(i) - m_train_paras.col(i);
     }
-    //normalize paras
-    delta_x = m_paras_sd.asDiagonal()*delta_x;
+    //normalize paras    
+    delta_x = (1.0/m_paras_sd.array()).matrix().asDiagonal()*delta_x;
 
     //combine R and b to solve, new_R=(R|b)
 //    const int R_row = m_para_num;
@@ -199,7 +199,7 @@ void train_test::update_para()
     Eigen::MatrixXf delta_x(m_para_num, m_total_images);
     delta_x = (m_para_Rs[m_casscade_level]*m_visible_features).colwise()+m_para_bs[m_casscade_level];
     //unnormalize paras
-    delta_x = (1.0/m_paras_sd.array()).matrix().asDiagonal()*delta_x;
+    delta_x = m_paras_sd.asDiagonal()*delta_x;
 
     m_train_paras+=delta_x;
     Eigen::MatrixXf delta_para = m_groundtruth_paras - m_train_paras;
@@ -356,6 +356,12 @@ void train_test::read_learned_para_Rbs()
         fread(b.data(), sizeof(float), row, file);
         m_para_bs.push_back(b);
     }
+    fclose(file);
+
+    file = fopen((root+"para_sds.bin").data(),"rb");
+    fread(&num, sizeof(int), 1, file);
+    m_paras_sd.resize(num);
+    fread(m_paras_sd.data(), sizeof(float), num, file);
     fclose(file);
 }
 
