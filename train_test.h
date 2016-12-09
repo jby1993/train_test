@@ -42,6 +42,8 @@ private:
     void update_keypoints_face_normals(TriMesh &mesh, const std::vector<int> &ids);
 private:
     Eigen::MatrixXf m_groundtruth_paras; //angle has to be arc
+    Eigen::VectorXf m_paras_sd;
+    Eigen::VectorXf m_paras_mean;
     Eigen::MatrixXf m_groundtruth_shapes;
     Eigen::MatrixXf m_groundtruth_exps;
     Eigen::MatrixXf m_groundtruth_box;

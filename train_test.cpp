@@ -131,8 +131,12 @@ void train_test::save_para_result()
         fwrite(m_para_bs[i].data(),sizeof(float),m_para_num,file);
     }
     fclose(file);
-}
 
+    file = fopen("..learn_result/para_sds.bin","wb");
+    fwrite(&m_para_num,sizeof(int),1,file);
+    fwrite(m_paras_sd.data(), sizeof(float), m_para_num, file);
+    fclose(file);
+}
 void train_test::initial_x_train_para_only()
 {
     initial_shape_exp_with_groundtruth();
@@ -151,12 +155,15 @@ void train_test::compute_all_visible_features()
 // ||delta_x - R*vfeature-b||^2+lamda*||R||^2
 void train_test::compute_paras_R_b()
 {
-    float lamda = 1.0;
+    float lamda = 2.0;
     Eigen::MatrixXf delta_x(m_para_num, m_total_images);
     for(int i=0;i<m_total_images;i++)
     {
             delta_x.col(i) = m_groundtruth_paras.col(i) - m_train_paras.col(i);
     }
+    //normalize paras
+    delta_x = m_paras_sd.asDiagonal()*delta_x;
+
     //combine R and b to solve, new_R=(R|b)
 //    const int R_row = m_para_num;
     const int R_col = m_keypoint_id.size()*m_feature_size+1;
@@ -166,7 +173,7 @@ void train_test::compute_paras_R_b()
     lhs.block(0,R_col-1,R_col-1,1) = m_visible_features.rowwise().sum();
     lhs(R_col-1,R_col-1) = float(m_total_images);
     //add regular
-    //lhs.block(0,0,R_col-1,R_col-1)+=(lamda*Eigen::VectorXf(R_col-1).setOnes()).asDiagonal();
+    lhs.block(0,0,R_col-1,R_col-1)+=(lamda*Eigen::VectorXf(R_col-1).setOnes()).asDiagonal();
 
     rhs.block(0,0,R_col-1,m_para_num) = m_visible_features*delta_x.transpose();
     rhs.bottomRows(1) = delta_x.transpose().colwise().sum();
@@ -191,6 +198,9 @@ void train_test::update_para()
 {
     Eigen::MatrixXf delta_x(m_para_num, m_total_images);
     delta_x = (m_para_Rs[m_casscade_level]*m_visible_features).colwise()+m_para_bs[m_casscade_level];
+    //unnormalize paras
+    delta_x = (1.0/m_paras_sd.array()).matrix().asDiagonal()*delta_x;
+
     m_train_paras+=delta_x;
     Eigen::MatrixXf delta_para = m_groundtruth_paras - m_train_paras;
     Eigen::MatrixXf delta_s = delta_para.row(0);
@@ -272,14 +282,14 @@ void train_test::compute_visible_features(int col)
     scales *= 6.0;
     if(!m_feature_detector->DescriptorOnCustomPoints(image,visuals,feature_pos,scales,visible_features) )
         std::cout<<"----------------feature computation has some wrong-----------------------"<<std::endl;
-    for(int i=0;i<m_keypoint_id.size();i++)
-    {
-        if(!visuals[i])  //now, set unvisible feature to zero
-        {
-            for(int j=i*m_feature_size; j<(i+1)*m_feature_size; j++)
-                visible_features(j) = 0.0;
-        }
-    }
+//    for(int i=0;i<m_keypoint_id.size();i++)
+//    {
+//        if(!visuals[i])  //now, set unvisible feature to zero
+//        {
+//            for(int j=i*m_feature_size; j<(i+1)*m_feature_size; j++)
+//                visible_features(j) = 0.0;
+//        }
+//    }
     //**************************
     m_visible_features.col(col) = visible_features;
 }
@@ -423,6 +433,20 @@ void train_test::read_ground_para_box()
             file.close();
         }
     }
+    m_paras_sd.resize(m_para_num);
+    m_paras_mean.resize(m_para_num);
+    m_paras_mean = m_groundtruth_paras.rowwise().mean();
+    Eigen::MatrixXf temp=m_groundtruth_paras.colwise()-m_paras_mean;
+    temp /= sqrt(float(m_total_images-1));
+    m_paras_sd=temp.rowwise().norm();
+    std::cout<<"train para mean: ";
+    for(int i=0; i<m_para_num; i++)
+        std::cout<<m_paras_mean(i)<<" ";
+    std::cout<<std::endl;
+    std::cout<<"train para sd: ";
+    for(int i=0; i<m_para_num; i++)
+        std::cout<<m_paras_sd(i)<<" ";
+    std::cout<<std::endl;
 }
 
 void train_test::load_3DMM_data()
