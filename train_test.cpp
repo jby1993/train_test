@@ -78,7 +78,9 @@ void train_test::train_para_only()
     m_para_bs.resize(m_casscade_sum, Eigen::VectorXf());
     for(m_casscade_level=0; m_casscade_level<m_casscade_sum; m_casscade_level++)
     {
+		std::cout<<"start compute visible features"<<std::endl;
         compute_all_visible_features();
+		std::cout<<"done!"<<std::endl;
         compute_paras_R_b();
         update_para();
     }
@@ -159,7 +161,7 @@ void train_test::compute_paras_R_b()
     rhs.block(0,0,R_col-1,m_para_num) = m_visible_features*delta_x.transpose();
     rhs.bottomRows(1) = delta_x.transpose().colwise().sum();
 
-    lhs = lhs.transpose().eval();
+    lhs.triangularView<Eigen::Lower>() = lhs.transpose();
     std::cout<<"casscade para "<<m_casscade_level<<" compute for A("<<lhs.rows()<<"*"<<lhs.cols()<<")..."<<std::endl;
 
     Eigen::MatrixXf temp = lhs.ldlt().solve(rhs);

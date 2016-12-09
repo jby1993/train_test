@@ -2,12 +2,13 @@
 #include <iostream>
 int main(int argc, char *argv[])
 {
-    train_test  TrainTest("/data/jby/train_test/train_data/","/data/jby/train_test/Data/");
+    train_test  TrainTest("./train_data/","./Data/");
     //train on my synthesis imgs
 //    TrainTest.set_train_root("/data/jby/train_test/train_data/");
-//    TrainTest.set_data_root("/data/jby/train_test/Data/");
+//    TrainTest.set_data_root("/data/jby/trai<F2>n_test/Data/");
     std::cout<<"start read data!"<<std::endl;
     TrainTest.read_groundtruth_data();
+	std::cout<<"read data done! start train..."<<std::endl;
     TrainTest.train_para_only();
     TrainTest.save_para_result();
     //test for my synthesis imgs
