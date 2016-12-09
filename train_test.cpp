@@ -57,6 +57,16 @@ void train_test::read_groundtruth_data()
         m_train_individuals_datanum.push_back(entrys.size());
         m_total_images+=entrys.size();
     }
+    m_data_to_person_id.resize(m_total_images, -1);
+    int start = 0;
+    for(int i=0;i<m_train_individuals_datanum.size();i++)
+    {
+        int size = m_train_individuals_datanum[i];
+        for(int j=0;j<size;j++)
+            m_data_to_person_id[start+j] = i;
+        start+=size;
+    }
+
     m_groundtruth_paras.resize(m_para_num, m_total_images);
     m_groundtruth_box.resize(4,m_total_images);
     m_train_paras.resize(m_para_num,m_total_images);
@@ -92,7 +102,9 @@ void train_test::test_para_only()
     initial_x_train_para_only();
     for(m_casscade_level=0; m_casscade_level<m_para_Rs.size(); m_casscade_level++)
     {
+        std::cout<<"start compute visible features"<<std::endl;
         compute_all_visible_features();
+        std::cout<<"done!"<<std::endl;
         update_para();
     }
     save_test_result_imgs();
@@ -129,13 +141,11 @@ void train_test::initial_x_train_para_only()
 
 void train_test::compute_all_visible_features()
 {
-    for(int p_id=0; p_id<m_train_individuals.size(); p_id++)
+    //use temp val in compute_visible_features instead of m_v, m_mesh to make omp work correct
+    #pragma omp parallel for num_threads(8)
+    for(int col=0; col<m_total_images; col++)
     {
-        update_mv(p_id);
-        for(int index=0;index<m_train_individuals_datanum[p_id];index++)
-        {
-            compute_visible_features(p_id,index);
-        }
+        compute_visible_features(col);
     }
 }
 // ||delta_x - R*vfeature-b||^2+lamda*||R||^2
@@ -183,10 +193,25 @@ void train_test::update_para()
     delta_x = (m_para_Rs[m_casscade_level]*m_visible_features).colwise()+m_para_bs[m_casscade_level];
     m_train_paras+=delta_x;
     Eigen::MatrixXf delta_para = m_groundtruth_paras - m_train_paras;
-    Eigen::VectorXf delta_norm = delta_para.colwise().norm();
-    std::cout<<"casscade para "<<m_casscade_level<<" para with ground truth norm: mean: "<<delta_norm.mean()
+    Eigen::MatrixXf delta_s = delta_para.row(0);
+    Eigen::MatrixXf delta_r = delta_para.block(1,0,3,m_total_images);
+    Eigen::MatrixXf delta_t = delta_para.block(4,0,2,m_total_images);
+    Eigen::MatrixXf delta_norm = delta_s.colwise().norm();
+    std::cout<<"casscade para "<<m_casscade_level<<" scale with ground truth norm: mean: "<<delta_norm.mean()
+            <<" max: "<<delta_norm.maxCoeff()<<" min: "<<delta_norm.minCoeff()<<std::endl;
+    delta_norm = (delta_r.row(0)).colwise().norm();
+    std::cout<<"casscade para "<<m_casscade_level<<" ax with ground truth norm: mean: "<<delta_norm.mean()
+            <<" max: "<<delta_norm.maxCoeff()<<" min: "<<delta_norm.minCoeff()<<std::endl;
+    delta_norm = (delta_r.row(1)).colwise().norm();
+    std::cout<<"casscade para "<<m_casscade_level<<" ay with ground truth norm: mean: "<<delta_norm.mean()
+            <<" max: "<<delta_norm.maxCoeff()<<" min: "<<delta_norm.minCoeff()<<std::endl;
+    delta_norm = (delta_r.row(2)).colwise().norm();
+    std::cout<<"casscade para "<<m_casscade_level<<" az with ground truth norm: mean: "<<delta_norm.mean()
             <<" max: "<<delta_norm.maxCoeff()<<" min: "<<delta_norm.minCoeff()<<std::endl;
 
+    delta_norm = delta_t.colwise().norm();
+    std::cout<<"casscade para "<<m_casscade_level<<" t with ground truth norm: mean: "<<delta_norm.mean()
+            <<" max: "<<delta_norm.maxCoeff()<<" min: "<<delta_norm.minCoeff()<<std::endl;
 }
 
 void train_test::update_mv(int individual)
@@ -198,9 +223,8 @@ void train_test::update_mv(int individual)
     m_v = m_mean_face + m_shape_pc*shape + m_expression_pc*exp;
 }
 
-void train_test::compute_visible_features(int person, int img)
+void train_test::compute_visible_features(int col)
 {
-    int col = getDataColId(person,img);
     float *para = m_train_paras.col(col).data();
     float scale = para[0];
     float ax = para[1]; float ay = para[2]; float az = para[3];
@@ -211,19 +235,24 @@ void train_test::compute_visible_features(int person, int img)
                       Eigen::AngleAxisf(ay, Eigen::Vector3f::UnitY()) *
                       Eigen::AngleAxisf(az, Eigen::Vector3f::UnitZ());
     Eigen::Matrix3f R = transformation.rotation();
-    m_v.resize(3,m_v.size()/3);
+    Eigen::MatrixXf temp_v(m_v.size(),1);
+    int pid = m_data_to_person_id[col];
+    Eigen::VectorXf shape = m_train_shapes.col(pid);
+    Eigen::VectorXf exp = m_train_exps.col(pid);
+    m_mean_face.resize(m_mean_face.size(),1);
+    temp_v = m_mean_face + m_shape_pc*shape + m_expression_pc*exp;
+    temp_v.resize(3,temp_v.size()/3);
+    temp_v  = R*temp_v;
+    temp_v *=scale;
+    Eigen::Vector3f trans;  trans(0) = tx;  trans(1) = ty;  trans(2) = 0.0;
+    temp_v.colwise() += trans;
     Eigen::MatrixXf verts(3, m_keypoint_id.size());
     for(int i=0;i<m_keypoint_id.size();i++)
     {
-        verts.col(i) = m_v.col(m_keypoint_id[i]);
+        verts.col(i) = temp_v.col(m_keypoint_id[i]);
     }
     Eigen::MatrixXf feature_pos(2,m_keypoint_id.size()) ;
-    verts = R*verts;
-    feature_pos.row(0) = verts.row(0);
-    feature_pos.row(1) = verts.row(1);
-    feature_pos *= scale;
-    Eigen::Vector2f trans;  trans(0) = tx;  trans(1) = ty;
-    feature_pos.colwise() += trans;
+    feature_pos = verts.block(0,0,2,m_keypoint_id.size());
 
     cv::Mat &image = m_train_imgs[col];
 //    cv::Mat grayImage;
@@ -235,12 +264,14 @@ void train_test::compute_visible_features(int person, int img)
 
     //visibles compute; can change to use openGL, more accurate
     std::vector<bool>   visuals;
-    compute_keypoint_visible(R*m_v,visuals);
+
+    compute_keypoint_visible(temp_v,image.cols,image.rows,visuals);
     // add extract feature code, para: grayImage feature_pos visuals, result:  visible_features; need to compute visible
     Eigen::VectorXf visible_features(m_feature_size*m_keypoint_id.size());
     Eigen::VectorXf scales(m_keypoint_id.size()); scales.setOnes();
     scales *= 6.0;
-    m_feature_detector->DescriptorOnCustomPoints(image,feature_pos,scales,visible_features) ;
+    if(!m_feature_detector->DescriptorOnCustomPoints(image,visuals,feature_pos,scales,visible_features) )
+        std::cout<<"----------------feature computation has some wrong-----------------------"<<std::endl;
     for(int i=0;i<m_keypoint_id.size();i++)
     {
         if(!visuals[i])  //now, set unvisible feature to zero
@@ -253,22 +284,39 @@ void train_test::compute_visible_features(int person, int img)
     m_visible_features.col(col) = visible_features;
 }
 
-void train_test::compute_keypoint_visible(const Eigen::MatrixXf &verts, std::vector<bool> &visuals)
+void train_test::compute_keypoint_visible(const Eigen::MatrixXf &verts, int width, int height,std::vector<bool> &visuals)
 {
-    float *addrv = m_mesh.point(m_mesh.vertices_begin().handle()).data();
-    memcpy(addrv, verts.data(), sizeof(float)*verts.size());
+    TriMesh temp_mesh;
+    temp_mesh.request_face_normals();
+    temp_mesh.request_vertex_normals();
+    for(int i=0;i<verts.cols();i++)
+    {
+        const float *data = verts.col(i).data();
+        temp_mesh.add_vertex(TriMesh::Point(data[0],data[1],data[2]));
+    }
+    for(int i=0;i<m_face_num;i++)
+    {
+        temp_mesh.add_face(TriMesh::VertexHandle(m_triangles(0,i)),TriMesh::VertexHandle(m_triangles(2,i)),TriMesh::VertexHandle(m_triangles(1,i)));
+    }
 //    m_mesh.update_normals();
     //for save compute time
-    update_keypoints_face_normals(m_mesh,m_keypoint_id);
+    update_keypoints_face_normals(temp_mesh,m_keypoint_id);
     visuals.resize(m_keypoint_id.size(), false);
     TriMesh::Normal zdir(0.0,0.0,1.0);
     for(int i=0; i< m_keypoint_id.size(); i++)
     {
-        TriMesh::Normal normal = m_mesh.normal(TriMesh::VertexHandle(m_keypoint_id[i]));
+        int id = m_keypoint_id[i];
+        TriMesh::Normal normal = temp_mesh.normal(TriMesh::VertexHandle(id));
 //        Eigen::Vector3f normal = Eigen::Map<Eigen::Vector3f>(tnormal.data());
         float val = zdir|normal;
         if(val<0.0)
-            visuals[i] = true;
+        {
+            //check inside img
+            int x = verts(0,id)+0.5;
+            int y = verts(1,id)+0.5;
+            if(x<width&&x>=0&&y<height&&y>=0)
+                visuals[i] = true;
+        }
     }
 }
 
@@ -428,8 +476,8 @@ void train_test::load_3DMM_data()
 
     file = fopen((m_data_root+"tri.bin").data(),"rb");
     fread(&m_face_num,sizeof(int),1,file);
-    Eigen::MatrixXi triangles(3,m_face_num);
-    fread(triangles.data(),sizeof(int),triangles.size(),file);
+    m_triangles.resize(3,m_face_num);
+    fread(m_triangles.data(),sizeof(int),m_triangles.size(),file);
     fclose(file);
 
 //    m_shape.resize(m_st_pc_num);    m_shape.setZero();
@@ -445,7 +493,7 @@ void train_test::load_3DMM_data()
         m_mesh.add_vertex(TriMesh::Point(0,0,0));
     for(int i=0;i<m_face_num;i++)
     {
-        m_mesh.add_face(TriMesh::VertexHandle(triangles(0,i)),TriMesh::VertexHandle(triangles(2,i)),TriMesh::VertexHandle(triangles(1,i)));
+        m_mesh.add_face(TriMesh::VertexHandle(m_triangles(0,i)),TriMesh::VertexHandle(m_triangles(2,i)),TriMesh::VertexHandle(m_triangles(1,i)));
     }
 
     std::cout<<"vertex num: "<<m_vertex_num<<"; face num: "<<m_face_num<<"; shape and texture pc num: "<<m_st_pc_num<<"; expression pc num: "<<m_expression_pc_num<<std::endl;
@@ -496,10 +544,26 @@ void train_test::initial_para()
         train_data[5] = ty;
     }
     Eigen::MatrixXf delta_para = m_groundtruth_paras - m_train_paras;
-    Eigen::VectorXf delta_norm = delta_para.colwise().norm();
-    std::cout<<"inital para with ground truth norm: mean: "<<delta_norm.mean()
+    Eigen::MatrixXf delta_s = delta_para.row(0);
+    Eigen::MatrixXf delta_r = delta_para.block(1,0,3,m_total_images);
+    Eigen::MatrixXf delta_t = delta_para.block(4,0,2,m_total_images);
+    Eigen::MatrixXf delta_norm = delta_s.colwise().norm();
+    std::cout<<"initial scale with ground truth norm: mean: "<<delta_norm.mean()
             <<" max: "<<delta_norm.maxCoeff()<<" min: "<<delta_norm.minCoeff()<<std::endl;
-}
+    delta_norm = delta_r.row(0).colwise().norm();
+    std::cout<<"initial ax with ground truth norm: mean: "<<delta_norm.mean()
+            <<" max: "<<delta_norm.maxCoeff()<<" min: "<<delta_norm.minCoeff()<<std::endl;
+    delta_norm = delta_r.row(1).colwise().norm();
+    std::cout<<"initial ay with ground truth norm: mean: "<<delta_norm.mean()
+            <<" max: "<<delta_norm.maxCoeff()<<" min: "<<delta_norm.minCoeff()<<std::endl;
+    delta_norm = delta_r.row(2).colwise().norm();
+    std::cout<<"initial az with ground truth norm: mean: "<<delta_norm.mean()
+            <<" max: "<<delta_norm.maxCoeff()<<" min: "<<delta_norm.minCoeff()<<std::endl;
+
+    delta_norm = delta_t.colwise().norm();
+    std::cout<<"initial t with ground truth norm: mean: "<<delta_norm.mean()
+            <<" max: "<<delta_norm.maxCoeff()<<" min: "<<delta_norm.minCoeff()<<std::endl;
+    }
 
 void train_test::compute_mean_shape_boundBox(BOX &box)
 {
@@ -546,7 +610,7 @@ void train_test::save_test_result_imgs()
             m_v.resize(3, m_v.size()/3);
             Eigen::MatrixXf temp = (scale*R*m_v).colwise()+Eigen::Vector3f(tx,ty,0.0);
             std::vector<bool>   visuals;
-            compute_keypoint_visible(temp,visuals);
+            compute_keypoint_visible(temp,img.cols,img.rows,visuals);
             for(int id=0;id<visuals.size();id++)
             {
                 int vid = m_keypoint_id[id];
@@ -575,6 +639,7 @@ int train_test::getDataColId(int person, int img)
     id+=img;
     return id;
 }
+
 //save some compute time!   do not use boundary points
 void train_test::update_keypoints_face_normals(TriMesh &mesh, const std::vector<int> &ids)
 {

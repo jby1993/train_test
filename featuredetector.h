@@ -25,7 +25,7 @@ class FeatureDetector
 {
 public:
     FeatureDetector();
-    virtual bool DescriptorOnCustomPoints(const cv::Mat &img, const Eigen::Matrix2Xf &points_pos, const Eigen::VectorXf &scales, Eigen::VectorXf &descriptors,const Eigen::VectorXf &oritations=Eigen::VectorXf(), bool compute_ori=true)=0;
+    virtual bool DescriptorOnCustomPoints(const cv::Mat &img, const std::vector<bool> &visibles,const Eigen::Matrix2Xf &points_pos, const Eigen::VectorXf &scales, Eigen::VectorXf &descriptors,const Eigen::VectorXf &oritations=Eigen::VectorXf(), bool compute_ori=true)=0;
 protected:
     //img data need single and row-major 0~1 and with correct size
     //everytime with copy, is not efficient!

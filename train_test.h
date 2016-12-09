@@ -22,8 +22,8 @@ private:
     void update_para();
 
     void update_mv(int individual);
-    void compute_visible_features(int person, int img);
-    void compute_keypoint_visible(const Eigen::MatrixXf &verts, std::vector<bool> &visuals);
+    void compute_visible_features(int col);
+    void compute_keypoint_visible(const Eigen::MatrixXf &verts, int width, int height, std::vector<bool> &visuals);
 
     void read_learned_para_Rbs();
 
@@ -53,6 +53,7 @@ private:
     std::vector<std::string> m_train_individuals;
     std::vector<int>              m_train_individuals_datanum;
     std::vector<int>            m_keypoint_id;
+    std::vector<int>            m_data_to_person_id;
     std::vector<Eigen::MatrixXf> m_para_Rs;
     std::vector<Eigen::VectorXf> m_para_bs;
     int m_feature_size;
@@ -76,6 +77,7 @@ private:
     Eigen::VectorXf m_expression_sd;
     Eigen::MatrixXf m_v;
     TriMesh m_mesh;
+    Eigen::MatrixXi m_triangles;
     int m_vertex_num;
     int m_st_pc_num;
     int m_expression_pc_num;

@@ -5,7 +5,7 @@ SIFTDectector::SIFTDectector()
 
 }
 
-bool SIFTDectector::DescriptorOnCustomPoints(const cv::Mat &img, const Eigen::Matrix2Xf &points_pos, const Eigen::VectorXf &scales, Eigen::VectorXf &descriptors, const Eigen::VectorXf &oritations, bool compute_ori)
+bool SIFTDectector::DescriptorOnCustomPoints(const cv::Mat &img, const std::vector<bool> &visibles, const Eigen::Matrix2Xf &points_pos, const Eigen::VectorXf &scales, Eigen::VectorXf &descriptors, const Eigen::VectorXf &oritations, bool compute_ori)
 {
     if(img.type()!=CV_32F)
     {
@@ -49,6 +49,17 @@ bool SIFTDectector::DescriptorOnCustomPoints(const cv::Mat &img, const Eigen::Ma
         /* For each keypoint ........................................ */
         for ( ; i < nkeys ; ++i)
         {
+            //process un visible point
+            if(!visibles[int(ikeys[5*i+4])])
+            {
+                vl_sift_pix rbuf [128] ;
+                for(int tnum=0; tnum<128; tnum++)
+                    rbuf[tnum] = 0.0;
+                float *save_data = result_data + int(ikeys[5*i+4])*128;
+                memcpy(save_data, rbuf, 128*sizeof(float));
+                continue;
+            }
+
             double                angles [4] ;
             int                   nangles ;
             VlSiftKeypoint        ik ;
