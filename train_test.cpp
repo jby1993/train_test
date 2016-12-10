@@ -159,7 +159,7 @@ void train_test::save_para_result()
     }
     fclose(file);
 
-    file = fopen("..learn_result/para_sds.bin","wb");
+    file = fopen("../learn_result/para_sds.bin","wb");
     fwrite(&m_para_num,sizeof(int),1,file);
     fwrite(m_paras_sd.data(), sizeof(float), m_para_num, file);
     fclose(file);
@@ -182,7 +182,7 @@ void train_test::compute_all_visible_features()
 // ||delta_x - R*vfeature-b||^2+lamda*||R||^2
 void train_test::compute_paras_R_b()
 {
-    float lamda = 1.0;
+    float lamda = 0.5;
     Eigen::MatrixXf delta_x;
     compute_delta_para(delta_x);
     //normalize paras    
