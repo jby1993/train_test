@@ -7,6 +7,7 @@
 
 train_test::train_test(const std::string &train_root, const std::string &data_root)
 {
+    m_test = false;
     m_train_root = train_root;
     m_test_root = "../test_data/";
     m_data_root = data_root;
@@ -159,7 +160,7 @@ void train_test::save_para_result()
     }
     fclose(file);
 
-    file = fopen("..learn_result/para_sds.bin","wb");
+    file = fopen("../learn_result/para_sds.bin","wb");
     fwrite(&m_para_num,sizeof(int),1,file);
     fwrite(m_paras_sd.data(), sizeof(float), m_para_num, file);
     fclose(file);
@@ -173,7 +174,7 @@ void train_test::initial_x_train_para_only()
 void train_test::compute_all_visible_features()
 {
     //use temp val in compute_visible_features instead of m_v, m_mesh to make omp work correct
-    #pragma omp parallel for num_threads(16)
+    #pragma omp parallel for num_threads(20)
     for(int col=0; col<m_total_datas; col++)
     {
         compute_visible_features(col);
@@ -289,7 +290,15 @@ void train_test::compute_visible_features(int col)
     Eigen::MatrixXf feature_pos(2,m_keypoint_id.size()) ;
     feature_pos = verts.block(0,0,2,m_keypoint_id.size());
 
-    cv::Mat &image = m_train_imgs[m_data_to_img_id[col]];
+    cv::Mat image;
+    if(!m_test)
+        image= m_train_imgs[m_data_to_img_id[col]];
+    else
+    {
+        image= m_train_imgs[m_data_to_img_id[col]].clone();
+        cv::cvtColor(image, image, cv::COLOR_BGR2GRAY);
+        image.convertTo(image,CV_32F,1.0);
+    }
 //    cv::Mat grayImage;
 //    if(image.channels()==3)
 //        cv::cvtColor(image, grayImage, cv::COLOR_BGR2GRAY);
@@ -401,9 +410,14 @@ void train_test::read_train_images()
         {
             QString num;    num.setNum(id);
             std::string name = root+file_name_base+num.toStdString()+".jpg";
-            cv::Mat tmp=cv::imread(name,cv::IMREAD_GRAYSCALE);  //read as CV_32F type, 0~255.0;
             cv::Mat img;
-            tmp.convertTo(img,CV_32F,1.0);
+            if(!m_test)
+            {
+                cv::Mat tmp=cv::imread(name,cv::IMREAD_GRAYSCALE);  //read as CV_32F type, 0~255.0;
+                tmp.convertTo(img,CV_32F,1.0);
+            }
+            else
+                img=cv::imread(name,cv::IMREAD_COLOR);
             m_train_imgs.push_back(img);
         }
     }
@@ -698,10 +712,10 @@ void train_test::save_test_result_imgs()
         for(int j=0; j<imgs; j++)
         {
             int box_num = m_train_perimage_boxnum[start_img+j];
-            cv::Mat img = m_train_imgs[start_img+j].clone();
             update_mv(i);
             for(int col=start_data; col<start_data+box_num; col++)
             {
+                cv::Mat img = m_train_imgs[start_img+j].clone();
                 float *para = m_train_paras.col(col).data();
                 float scale = para[0];
                 float x,y,z;    x=para[1];  y=para[2];  z=para[3];
@@ -732,8 +746,8 @@ void train_test::save_test_result_imgs()
                 QDir save_dir(QString(save_root.data()));
                 save_dir.mkdir(QString(m_train_individuals[i].data()));
                 cv::imwrite(save_root+m_train_individuals[i]+"/"+iid.toStdString()+"_"+bid.toStdString()+".jpg",img);
-                start_data+=box_num;
             }
+            start_data+=box_num;
         }
         start_img+=imgs;
     }

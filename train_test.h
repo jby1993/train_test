@@ -15,6 +15,7 @@ public:
     void train_para_only();
     void test_para_only();
     void save_para_result();
+    void set_test(bool is_test){m_test = is_test;}
 private:
     void initial_x_train_para_only();
     void compute_all_visible_features();
@@ -89,6 +90,7 @@ private:
     int m_expression_pc_num;
     int m_face_num;
 
+    bool m_test;
     FeatureDetector *m_feature_detector;
 };
 
