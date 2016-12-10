@@ -183,7 +183,7 @@ void train_test::compute_all_visible_features()
 // ||delta_x - R*vfeature-b||^2+lamda*||R||^2
 void train_test::compute_paras_R_b()
 {
-    float lamda = 1.0;
+    float lamda = 0.5;
     Eigen::MatrixXf delta_x;
     compute_delta_para(delta_x);
     //normalize paras    
